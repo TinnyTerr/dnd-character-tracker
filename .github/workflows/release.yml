@@ -1,0 +1,64 @@
+name: release
+
+# Push a tag matching manifest.json's version (e.g. "1.0.0" or "v1.0.0") or dispatch manually
+# to build and publish main.js, manifest.json, and styles.css (the three files Obsidian installs).
+on:
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version matching manifest.json (e.g. 1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine release tag and verify against manifest.json
+        id: meta
+        run: |
+          RAW_TAG="${{ inputs.version || github.ref_name }}"
+          CLEAN_VER="${RAW_TAG#v}"
+          MANIFEST_VER="$(jq -r .version manifest.json)"
+          if [ "$CLEAN_VER" != "$MANIFEST_VER" ]; then
+            echo "Error: tag/input version ($CLEAN_VER) must match manifest.json version ($MANIFEST_VER)"
+            exit 1
+          fi
+          echo "tag=$RAW_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$CLEAN_VER" >> "$GITHUB_OUTPUT"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck & Test
+        run: |
+          bun run typecheck
+          bun test
+
+      - name: Compile
+        run: bun run build
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+
+      - name: Publish GitHub Release
+        run: |
+          gh release create "${{ steps.meta.outputs.tag }}" main.js manifest.json styles.css --title "${{ steps.meta.outputs.tag }}" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
