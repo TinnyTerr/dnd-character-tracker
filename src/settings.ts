@@ -1,5 +1,14 @@
-import { type App, PluginSettingTab, Setting } from "obsidian";
+import {
+	type App,
+	PluginSettingTab,
+	requireApiVersion,
+	Setting,
+	type SettingDefinitionItem,
+} from "obsidian";
 import type DndCharacterTrackerPlugin from "./main";
+import type { DndPluginSettings } from "./types";
+
+type SettingKey = keyof DndPluginSettings;
 
 export class DndSettingTab extends PluginSettingTab {
 	plugin: DndCharacterTrackerPlugin;
@@ -9,11 +18,57 @@ export class DndSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+	/** Declarative settings (Obsidian 1.13.0+): rendered natively and indexed by settings search. */
+	override getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				name: "Default characters folder",
+				desc: "Vault folder where newly created character notes are stored.",
+				control: {
+					type: "text",
+					key: "charactersFolder",
+					placeholder: "Characters",
+					defaultValue: "Characters",
+				},
+			},
+			{
+				name: "Show dice roll notifications",
+				desc: "Display an Obsidian toast notice whenever a roll is made on a character sheet.",
+				control: {
+					type: "toggle",
+					key: "showDiceNotices",
+					defaultValue: true,
+				},
+			},
+		];
+	}
+
+	override getControlValue(key: string): unknown {
+		return this.plugin.pluginSettings[key as SettingKey];
+	}
+
+	override async setControlValue(key: string, value: unknown): Promise<void> {
+		const settings = this.plugin.pluginSettings;
+		if (key === "charactersFolder") {
+			settings.charactersFolder = (typeof value === "string" ? value.trim() : "") || "Characters";
+		} else if (key === "showDiceNotices") {
+			settings.showDiceNotices = Boolean(value);
+		} else {
+			return;
+		}
+		await this.plugin.saveSettings();
+	}
+
 	override display(): void {
+		if (requireApiVersion("1.13.0")) {
+			// Native declarative rendering from getSettingDefinitions().
+			super.display();
+			return;
+		}
+
+		// Imperative fallback for Obsidian versions older than 1.13.0.
 		const { containerEl } = this;
 		containerEl.empty();
-
-		containerEl.createEl("h2", { text: "D&D Character Tracker Settings" });
 
 		new Setting(containerEl)
 			.setName("Default characters folder")
@@ -23,8 +78,7 @@ export class DndSettingTab extends PluginSettingTab {
 					.setPlaceholder("Characters")
 					.setValue(this.plugin.pluginSettings.charactersFolder)
 					.onChange(async (value) => {
-						this.plugin.pluginSettings.charactersFolder = value.trim() || "Characters";
-						await this.plugin.saveSettings();
+						await this.setControlValue("charactersFolder", value);
 					}),
 			);
 
@@ -35,8 +89,7 @@ export class DndSettingTab extends PluginSettingTab {
 				toggle
 					.setValue(this.plugin.pluginSettings.showDiceNotices)
 					.onChange(async (value) => {
-						this.plugin.pluginSettings.showDiceNotices = value;
-						await this.plugin.saveSettings();
+						await this.setControlValue("showDiceNotices", value);
 					}),
 			);
 	}
