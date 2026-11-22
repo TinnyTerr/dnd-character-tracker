@@ -7,6 +7,7 @@ import {
 	createDefaultCharacter,
 	encumbranceStats,
 	formatModifier,
+	normalizeCharacter,
 	passiveScore,
 	proficiencyBonus,
 	rollD20,
@@ -168,5 +169,33 @@ describe("Markdown Storage & Codeblock Sync", () => {
 
 		const bad = parseCharacterBlock("{ broken json");
 		expect(bad.error).not.toBeNull();
+	});
+});
+
+describe("homebrew field preservation", () => {
+	test("normalizeCharacter keeps unknown fields at every level", () => {
+		const raw = {
+			name: "Homebrew Hero",
+			sanity: { current: 7, max: 10 },
+			languages: ["Common", "Sylvan"],
+			skills: { stealth: 1, cooking: 2, bogus: 5 },
+			spells: [{ name: "Custom Bolt", level: 1, damage: "2d6", school: "Chronurgy" }],
+			attacks: [{ name: "Tail Whip", damage: "1d6", reach: "10 ft." }],
+			resources: [{ name: "Grit", max: 3, recharge: "on crit" }],
+			inventory: [{ name: "Wand", charges: 7 }],
+			currency: { gp: 5, platinumScrip: 3 },
+		};
+		const c = normalizeCharacter(raw);
+		expect(c.sanity).toEqual({ current: 7, max: 10 });
+		expect(c.languages).toEqual(["Common", "Sylvan"]);
+		expect(c.skills).toEqual({ stealth: 1, cooking: 2 });
+		expect((c.spells[0] as unknown as Record<string, unknown>).school).toBe("Chronurgy");
+		expect((c.attacks[0] as unknown as Record<string, unknown>).reach).toBe("10 ft.");
+		expect((c.resources[0] as unknown as Record<string, unknown>).recharge).toBe("on crit");
+		expect((c.inventory[0] as unknown as Record<string, unknown>).charges).toBe(7);
+		expect((c.currency as unknown as Record<string, unknown>).platinumScrip).toBe(3);
+		// Survives a full serialize → parse round trip
+		const again = normalizeCharacter(JSON.parse(JSON.stringify(c)));
+		expect(again).toEqual(c);
 	});
 });

@@ -513,11 +513,12 @@ export function normalizeCharacter(raw: unknown): DndCharacter {
 		string,
 		unknown
 	>;
-	const skills: Partial<Record<SkillKey, ProficiencyRank>> = {};
-	for (const s of SKILLS) {
-		const v = Number(rawSkills[s.key]);
+	// Keep every skill key (standard or homebrew) with a valid rank.
+	const skills: Record<string, ProficiencyRank> = {};
+	for (const [key, value] of Object.entries(rawSkills)) {
+		const v = Number(value);
 		if (v === 1 || v === 2) {
-			skills[s.key] = v;
+			skills[key] = v;
 		}
 	}
 
@@ -538,11 +539,13 @@ export function normalizeCharacter(raw: unknown): DndCharacter {
 		}
 	}
 
-	const rawCur = (
+	const rawCurrency = (
 		obj.currency && typeof obj.currency === "object" ? obj.currency : {}
 	) as Record<string, unknown>;
 
 	return {
+		// Preserve any unrecognized (homebrew / custom) top-level fields verbatim.
+		...obj,
 		name: typeof obj.name === "string" && obj.name.trim() ? obj.name.trim() : def.name,
 		race: typeof obj.race === "string" ? obj.race : def.race,
 		className: typeof obj.className === "string" ? obj.className : def.className,
@@ -587,6 +590,7 @@ export function normalizeCharacter(raw: unknown): DndCharacter {
 			? obj.spells
 					.filter((s): s is Record<string, unknown> => Boolean(s && typeof s === "object"))
 					.map((s, idx) => ({
+						...s,
 						id: typeof s.id === "string" ? s.id : `sp-${idx + 1}`,
 						name: typeof s.name === "string" ? s.name : "Unnamed Spell",
 						level: Math.max(0, Math.min(9, Number(s.level) || 0)),
@@ -600,6 +604,7 @@ export function normalizeCharacter(raw: unknown): DndCharacter {
 			? obj.attacks
 					.filter((a): a is Record<string, unknown> => Boolean(a && typeof a === "object"))
 					.map((a, idx) => ({
+						...a,
 						id: typeof a.id === "string" ? a.id : `atk-${idx + 1}`,
 						name: typeof a.name === "string" ? a.name : "Attack",
 						attackBonus: Number(a.attackBonus) || 0,
@@ -620,6 +625,7 @@ export function normalizeCharacter(raw: unknown): DndCharacter {
 								? r.resetOn
 								: "long";
 						return {
+							...r,
 							id: typeof r.id === "string" ? r.id : `res-${idx + 1}`,
 							name: typeof r.name === "string" ? r.name : "Resource",
 							current,
@@ -633,6 +639,7 @@ export function normalizeCharacter(raw: unknown): DndCharacter {
 			? obj.inventory
 					.filter((i): i is Record<string, unknown> => Boolean(i && typeof i === "object"))
 					.map((i, idx) => ({
+						...i,
 						id: typeof i.id === "string" ? i.id : `item-${idx + 1}`,
 						name: typeof i.name === "string" ? i.name : "Item",
 						qty: Math.max(0, Number(i.qty ?? 1)),
@@ -643,11 +650,12 @@ export function normalizeCharacter(raw: unknown): DndCharacter {
 					}))
 			: [],
 		currency: {
-			cp: Math.max(0, Number(rawCur.cp) || 0),
-			sp: Math.max(0, Number(rawCur.sp) || 0),
-			ep: Math.max(0, Number(rawCur.ep) || 0),
-			gp: Math.max(0, Number(rawCur.gp) || 0),
-			pp: Math.max(0, Number(rawCur.pp) || 0),
+			...rawCurrency,
+			cp: Math.max(0, Number(rawCurrency.cp) || 0),
+			sp: Math.max(0, Number(rawCurrency.sp) || 0),
+			ep: Math.max(0, Number(rawCurrency.ep) || 0),
+			gp: Math.max(0, Number(rawCurrency.gp) || 0),
+			pp: Math.max(0, Number(rawCurrency.pp) || 0),
 		},
 		features: typeof obj.features === "string" ? obj.features : "",
 		notes: typeof obj.notes === "string" ? obj.notes : "",

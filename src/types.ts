@@ -157,7 +157,7 @@ export interface DndCharacter {
 	// Abilities & Proficiencies
 	abilities: Record<AbilityKey, number>;
 	saveProficiencies: AbilityKey[];
-	skills: Partial<Record<SkillKey, ProficiencyRank>>;
+	skills: Partial<Record<SkillKey, ProficiencyRank>> & Record<string, ProficiencyRank>;
 	jackOfAllTrades?: boolean;
 
 	// Conditions & Concentration
@@ -176,6 +176,9 @@ export interface DndCharacter {
 	currency: Currency;
 	features?: string;
 	notes?: string;
+
+	/** Unrecognized homebrew / custom fields are preserved verbatim on save. */
+	[extra: string]: unknown;
 }
 
 export interface DndPluginSettings {
