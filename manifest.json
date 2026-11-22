@@ -1,7 +1,7 @@
 {
 	"id": "dnd-character-tracker",
 	"name": "DnD Character Tracker",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"minAppVersion": "1.7.2",
 	"description": "Interactive D&D 5e character sheets, live HP & spell slot tracking, rests, inventory, and dice rolling in your vault.",
 	"author": "tinnyterr",
