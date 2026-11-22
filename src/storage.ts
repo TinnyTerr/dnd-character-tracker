@@ -17,7 +17,7 @@ export function parseCharacterBlock(source: string): {
 	}
 
 	try {
-		const raw = JSON.parse(trimmed);
+		const raw = JSON.parse(trimmed) as unknown;
 		return {
 			character: normalizeCharacter(raw),
 			error: null,

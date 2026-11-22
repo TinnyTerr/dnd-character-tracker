@@ -1,7 +1,6 @@
 import {
 	type Editor,
 	type MarkdownPostProcessorContext,
-	type MarkdownView,
 	Notice,
 	Plugin,
 	TFile,
@@ -260,7 +259,8 @@ export default class DndCharacterTrackerPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		this.pluginSettings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const saved = (await this.loadData()) as Partial<DndPluginSettings> | null;
+		this.pluginSettings = { ...DEFAULT_SETTINGS, ...saved };
 	}
 
 	async saveSettings(): Promise<void> {
