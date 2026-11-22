@@ -12,11 +12,10 @@ export class DndSettingTab extends PluginSettingTab {
 	override display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-
-		containerEl.createEl("h2", { text: "D&D Character Tracker Settings" });
-
+		
 		new Setting(containerEl)
 			.setName("Default characters folder")
+			.setHeading("D&D Character Tracker Settings")
 			.setDesc("Vault folder where newly created character notes are stored.")
 			.addText((text) =>
 				text
