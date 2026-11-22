@@ -52,6 +52,17 @@ export class PartySidebarView extends ItemView {
 		await this.refresh();
 	}
 
+	private async partyLongRest(): Promise<void> {
+		for (const ref of this.tracked) {
+			takeLongRest(ref.character);
+			const raw = await this.app.vault.read(ref.file);
+			const next = updateCharacterBlockInNote(raw, ref.character, null);
+			if (next !== raw) await this.app.vault.modify(ref.file, next);
+		}
+		new Notice(`🌙 Party Long Rest complete for ${this.tracked.length} characters!`);
+		await this.refresh();
+	}
+
 	public async refresh(): Promise<void> {
 		const files = this.app.vault.getMarkdownFiles();
 		const list: TrackedCharacterRef[] = [];
@@ -128,15 +139,8 @@ export class PartySidebarView extends ItemView {
 			cls: "dnd-mini-btn",
 			text: "🌙 Party Long Rest",
 		});
-		partyLongRestBtn.addEventListener("click", async () => {
-			for (const ref of this.tracked) {
-				takeLongRest(ref.character);
-				const raw = await this.app.vault.read(ref.file);
-				const next = updateCharacterBlockInNote(raw, ref.character, null);
-				if (next !== raw) await this.app.vault.modify(ref.file, next);
-			}
-			new Notice(`🌙 Party Long Rest complete for ${this.tracked.length} characters!`);
-			await this.refresh();
+		partyLongRestBtn.addEventListener("click", () => {
+			void this.partyLongRest();
 		});
 
 		const listEl = container.createDiv({ cls: "dnd-party-list" });
