@@ -72,6 +72,7 @@ export class DndSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Default characters folder")
+			.setHeading("D&D Character Tracker Settings")
 			.setDesc("Vault folder where newly created character notes are stored.")
 			.addText((text) =>
 				text
