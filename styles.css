@@ -29,9 +29,10 @@
 	gap: 8px;
 }
 
-.dnd-char-name {
-	margin: 0 !important;
-	font-size: 1.45em !important;
+/* Doubled class + body prefix out-ranks Obsidian's heading/button/input defaults without. */
+body .dnd-char-name.dnd-char-name {
+	margin: 0;
+	font-size: 1.45em;
 	font-weight: 700;
 	line-height: 1.2;
 }
@@ -106,10 +107,11 @@
 	background: var(--interactive-hover);
 }
 
-.dnd-btn-primary {
-	background: var(--interactive-accent) !important;
-	color: var(--text-on-accent) !important;
-	border-color: var(--interactive-accent) !important;
+body .dnd-btn-primary.dnd-btn-primary,
+body .dnd-btn-primary.dnd-btn-primary:hover {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
 	font-weight: 600;
 }
 
@@ -271,10 +273,10 @@
 	align-items: center;
 }
 
-.dnd-hp-input {
-	width: 54px !important;
-	padding: 3px 6px !important;
-	font-size: 0.82em !important;
+body .dnd-hp-input.dnd-hp-input {
+	width: 54px;
+	padding: 3px 6px;
+	font-size: 0.82em;
 }
 
 .dnd-hp-btn {
@@ -477,11 +479,11 @@
 	border-color: rgba(168, 85, 247, 0.35);
 }
 
-.dnd-inline-input,
-.dnd-cond-select {
-	font-size: 0.78em !important;
-	padding: 2px 8px !important;
-	height: 26px !important;
+body .dnd-inline-input.dnd-inline-input,
+body .dnd-cond-select.dnd-cond-select {
+	font-size: 0.78em;
+	padding: 2px 8px;
+	height: 26px;
 }
 
 /* Nav Tabs */
