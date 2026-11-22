@@ -13,7 +13,7 @@ import {
 } from "./modals";
 import { PARTY_VIEW_TYPE, PartySidebarView } from "./party-view";
 import { DndSettingTab } from "./settings";
-import { CharacterSheetRenderer } from "./sheet-renderer";
+import { CharacterSheetRenderer, type SheetUiState } from "./sheet-renderer";
 import {
 	extractCharactersFromNote,
 	parseCharacterBlock,
@@ -23,6 +23,7 @@ import { DEFAULT_SETTINGS, type DndCharacter, type DndPluginSettings } from "./t
 
 export default class DndCharacterTrackerPlugin extends Plugin {
 	pluginSettings: DndPluginSettings = { ...DEFAULT_SETTINGS };
+	private sheetUiState = new Map<string, SheetUiState>();
 
 	override async onload(): Promise<void> {
 		await this.loadSettings();
@@ -122,7 +123,7 @@ export default class DndCharacterTrackerPlugin extends Plugin {
 	}
 
 	override onunload(): void {
-		// Obsidian automatically cleans up views and processors
+		this.sheetUiState.clear();
 	}
 
 	private renderCharacterCodeBlock(
@@ -138,7 +139,14 @@ export default class DndCharacterTrackerPlugin extends Plugin {
 			return;
 		}
 
+		const sectionInfo = ctx.getSectionInfo(el);
+		const sheetKey = `${ctx.sourcePath}::${sectionInfo?.lineStart ?? character.name}`;
+
 		const sheet = new CharacterSheetRenderer(el, character, {
+			initialUiState: this.sheetUiState.get(sheetKey),
+			onUiStateChange: (state) => {
+				this.sheetUiState.set(sheetKey, state);
+			},
 			onSave: async (updated: DndCharacter) => {
 				await this.persistCharacterBlock(ctx, el, updated);
 			},

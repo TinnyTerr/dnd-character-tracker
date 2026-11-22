@@ -29,9 +29,17 @@ import {
 
 export type SheetTab = "main" | "combat" | "spells" | "inventory" | "notes";
 
+export interface SheetUiState {
+	activeTab: SheetTab;
+	rollMode: "normal" | "advantage" | "disadvantage";
+	isEditingProfile: boolean;
+}
+
 export interface CharacterSheetCallbacks {
 	onSave: (updated: DndCharacter) => Promise<void> | void;
 	onRollNotice?: (label: string, result: DiceRollResult) => void;
+	initialUiState?: Partial<SheetUiState>;
+	onUiStateChange?: (state: SheetUiState) => void;
 }
 
 export class CharacterSheetRenderer {
@@ -51,6 +59,23 @@ export class CharacterSheetRenderer {
 		this.container = container;
 		this.character = character;
 		this.callbacks = callbacks;
+		if (callbacks.initialUiState?.activeTab) {
+			this.activeTab = callbacks.initialUiState.activeTab;
+		}
+		if (callbacks.initialUiState?.rollMode) {
+			this.rollMode = callbacks.initialUiState.rollMode;
+		}
+		if (callbacks.initialUiState?.isEditingProfile !== undefined) {
+			this.isEditingProfile = callbacks.initialUiState.isEditingProfile;
+		}
+	}
+
+	private notifyUiStateChange(): void {
+		this.callbacks.onUiStateChange?.({
+			activeTab: this.activeTab,
+			rollMode: this.rollMode,
+			isEditingProfile: this.isEditingProfile,
+		});
 	}
 
 	public setCharacter(character: DndCharacter): void {
@@ -139,6 +164,7 @@ export class CharacterSheetRenderer {
 		});
 		editBtn.addEventListener("click", () => {
 			this.isEditingProfile = !this.isEditingProfile;
+			this.notifyUiStateChange();
 			this.render();
 		});
 
@@ -168,6 +194,7 @@ export class CharacterSheetRenderer {
 			});
 			btn.addEventListener("click", () => {
 				this.rollMode = mode;
+				this.notifyUiStateChange();
 				this.render();
 			});
 		}
@@ -553,6 +580,7 @@ export class CharacterSheetRenderer {
 			});
 			btn.addEventListener("click", () => {
 				this.activeTab = t.id;
+				this.notifyUiStateChange();
 				this.render();
 			});
 		}
