@@ -286,39 +286,145 @@ export function rollD20(
 	};
 }
 
+const ABILITY_ALIASES: Record<string, AbilityKey> = {
+	str: "str",
+	strength: "str",
+	dex: "dex",
+	dexterity: "dex",
+	con: "con",
+	constitution: "con",
+	int: "int",
+	intelligence: "int",
+	wis: "wis",
+	wisdom: "wis",
+	cha: "cha",
+	charisma: "cha",
+};
+
+function getPlaceholderValue(token: string, char: DndCharacter): number | null {
+	const key = token.toLowerCase();
+	const ability = ABILITY_ALIASES[key];
+	if (ability) {
+		return abilityModifier(char.abilities[ability] ?? 10);
+	}
+	if (key === "pb" || key === "prof" || key === "proficiency") {
+		return proficiencyBonus(char.level);
+	}
+	if (key === "lvl" || key === "level") {
+		return Math.max(1, Math.min(20, Math.floor(char.level || 1)));
+	}
+	if (key === "spell" || key === "mod") {
+		return char.spellcastingAbility
+			? abilityModifier(char.abilities[char.spellcastingAbility] ?? 10)
+			: 0;
+	}
+	return null;
+}
+
 /**
- * Parse and roll arbitrary dice expressions such as "2d6+3", "1d8-1", "4d6", "d20+5"
+ * Replace character stat placeholders (e.g. `dex`, `{dex}`, `pb`, `{pb}`, `str`, `spell`)
+ * in a formula or modifier string with their numeric values.
+ */
+export function resolvePlaceholders(expr: string, char: DndCharacter): string {
+	return expr
+		.replace(/\{([a-zA-Z]+)\}/g, (match, token: string) => {
+			const val = getPlaceholderValue(token, char);
+			return val === null ? match : String(val);
+		})
+		.replace(/\b([a-zA-Z]+)\b/g, (match, token: string) => {
+			const val = getPlaceholderValue(token, char);
+			return val === null ? match : String(val);
+		});
+}
+
+/**
+ * Evaluate a numeric or placeholder-based bonus expression (e.g. `5`, `"dex + pb"`, `"{dex}+2"`).
+ */
+export function evaluateBonus(expr: number | string, char: DndCharacter): number {
+	if (typeof expr === "number") {
+		return Number.isFinite(expr) ? Math.trunc(expr) : 0;
+	}
+	const resolved = resolvePlaceholders(expr, char).replace(/\s+/g, "");
+	if (!resolved || !/^[+-]?\d+(?:[+-]+\d+)*$/.test(resolved)) {
+		return 0;
+	}
+	let total = 0;
+	const termRe = /([+-]*)(\d+)/g;
+	for (const m of resolved.matchAll(termRe)) {
+		const signs = m[1] ?? "";
+		const minusCount = (signs.match(/-/g) ?? []).length;
+		const sign = minusCount % 2 === 1 ? -1 : 1;
+		total += sign * Number.parseInt(m[2]!, 10);
+	}
+	return total;
+}
+
+/**
+ * Parse and roll dice expressions such as "2d6+3", "1d8-1", "4d6", "d20+5",
+ * or expressions with stat placeholders like "1d8+dex" or "1d20+dex+pb".
  */
 export function rollFormula(
 	formula: string,
 	rng: () => number = Math.random,
+	char?: DndCharacter,
 ): DiceRollResult | null {
-	const cleaned = formula.trim().replace(/\s+/g, "");
-	const match = /^(\d*)d(\d+)([+-]\d+)?$/i.exec(cleaned);
-	if (!match) return null;
+	const resolved = char ? resolvePlaceholders(formula, char) : formula;
+	const cleaned = resolved.trim().replace(/\s+/g, "");
+	if (!cleaned) return null;
 
-	const count = match[1] ? Number.parseInt(match[1], 10) : 1;
-	const sides = Number.parseInt(match[2]!, 10);
-	const modifier = match[3] ? Number.parseInt(match[3], 10) : 0;
+	const termRe = /([+-]*)(\d*d\d+|\d+)/gi;
+	const diceTerms: Array<{ count: number; sides: number; sign: number }> = [];
+	let modifier = 0;
+	let consumed = 0;
 
-	if (count <= 0 || count > 100 || sides <= 0 || sides > 1000) return null;
+	for (const match of cleaned.matchAll(termRe)) {
+		if (match.index !== consumed) return null;
+		consumed += match[0].length;
 
-	const rolls: number[] = [];
-	let sum = 0;
-	for (let i = 0; i < count; i++) {
-		const r = Math.floor(rng() * sides) + 1;
-		rolls.push(r);
-		sum += r;
+		const signs = match[1] ?? "";
+		const minusCount = (signs.match(/-/g) ?? []).length;
+		const sign = minusCount % 2 === 1 ? -1 : 1;
+		const token = match[2]!;
+
+		const diceMatch = /^(\d*)d(\d+)$/i.exec(token);
+		if (diceMatch) {
+			const count = diceMatch[1] ? Number.parseInt(diceMatch[1], 10) : 1;
+			const sides = Number.parseInt(diceMatch[2]!, 10);
+			if (count <= 0 || count > 100 || sides <= 0 || sides > 1000) return null;
+			diceTerms.push({ count, sides, sign });
+		} else {
+			modifier += sign * Number.parseInt(token, 10);
+		}
 	}
 
+	if (consumed !== cleaned.length || diceTerms.length === 0) return null;
+
+	const rolls: number[] = [];
+	let diceSum = 0;
+	const formulaParts: string[] = [];
+
+	for (let i = 0; i < diceTerms.length; i++) {
+		const term = diceTerms[i]!;
+		const termPrefix = i === 0 ? (term.sign < 0 ? "-" : "") : term.sign < 0 ? "-" : "+";
+		formulaParts.push(`${termPrefix}${term.count}d${term.sides}`);
+		for (let j = 0; j < term.count; j++) {
+			const r = Math.floor(rng() * term.sides) + 1;
+			rolls.push(term.sign * r);
+			diceSum += term.sign * r;
+		}
+	}
+
+	const modStr = modifier === 0 ? "" : formatModifier(modifier);
+	const singleD20 = diceTerms.length === 1 && diceTerms[0]!.count === 1 && diceTerms[0]!.sides === 20 && diceTerms[0]!.sign === 1;
+
 	return {
-		formula: `${count}d${sides}${modifier === 0 ? "" : formatModifier(modifier)}`,
+		formula: `${formulaParts.join("")}${modStr}`,
 		rolls,
 		keptRolls: rolls,
 		modifier,
-		total: sum + modifier,
-		isCriticalHit: count === 1 && sides === 20 && rolls[0] === 20,
-		isCriticalFail: count === 1 && sides === 20 && rolls[0] === 1,
+		total: diceSum + modifier,
+		isCriticalHit: singleD20 && rolls[0] === 20,
+		isCriticalFail: singleD20 && rolls[0] === 1,
 		mode: "normal",
 	};
 }
@@ -607,10 +713,13 @@ export function normalizeCharacter(raw: unknown): DndCharacter {
 						...a,
 						id: typeof a.id === "string" ? a.id : `atk-${idx + 1}`,
 						name: typeof a.name === "string" ? a.name : "Attack",
-						attackBonus: Number(a.attackBonus) || 0,
+						attackBonus:
+							typeof a.attackBonus === "string"
+								? a.attackBonus
+								: Number(a.attackBonus) || 0,
 						damage: typeof a.damage === "string" ? a.damage : "1d4",
 						damageType: typeof a.damageType === "string" ? a.damageType : "bludgeoning",
-						range: typeof a.range === "string" ? a.range : "5 ft.",
+						range: typeof a.range === "string" ? a.range : "",
 						notes: typeof a.notes === "string" ? a.notes : "",
 					}))
 			: [],

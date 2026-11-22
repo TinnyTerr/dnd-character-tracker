@@ -87,7 +87,7 @@ export interface ClassResource {
 export interface AttackEntry {
 	id: string;
 	name: string;
-	attackBonus: number;
+	attackBonus: number | string;
 	damage: string;
 	damageType: string;
 	range?: string;

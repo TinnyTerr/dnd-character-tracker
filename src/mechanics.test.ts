@@ -6,10 +6,12 @@ import {
 	applyTempHp,
 	createDefaultCharacter,
 	encumbranceStats,
+	evaluateBonus,
 	formatModifier,
 	normalizeCharacter,
 	passiveScore,
 	proficiencyBonus,
+	resolvePlaceholders,
 	rollD20,
 	rollFormula,
 	savingThrowModifier,
@@ -142,6 +144,40 @@ describe("D&D 5e Mechanics", () => {
 		expect(enc.maxCarry).toBe(240);
 		expect(enc.isEncumbered).toBe(false);
 	});
+
+	test("stat placeholders in attack bonuses and dice formulas", () => {
+		const gunslinger = createDefaultCharacter({
+			level: 5, // PB = +3
+			abilities: { str: 8, dex: 18, con: 12, int: 10, wis: 14, cha: 10 },
+			spellcastingAbility: "wis",
+		});
+
+		expect(resolvePlaceholders("dex + pb", gunslinger)).toBe("4 + 3");
+		expect(resolvePlaceholders("1d10+{dex}+2", gunslinger)).toBe("1d10+4+2");
+
+		expect(evaluateBonus(5, gunslinger)).toBe(5);
+		expect(evaluateBonus("dex + pb", gunslinger)).toBe(7); // +4 + +3
+		expect(evaluateBonus("{dex} + {pb} + 1", gunslinger)).toBe(8);
+		expect(evaluateBonus("str + pb", gunslinger)).toBe(2); // -1 + 3
+		expect(evaluateBonus("5 - str", gunslinger)).toBe(6); // 5 - (-1)
+
+		// 1d10+dex with rng=0.5 -> d10 rolls 6 + 4 = 10
+		const dmg = rollFormula("1d10+dex", () => 0.5, gunslinger);
+		expect(dmg).not.toBeNull();
+		expect(dmg?.total).toBe(10);
+		expect(dmg?.formula).toBe("1d10+4");
+
+		// Negative modifier: 1d8+str with str=-1, rng=0.5 -> d8 rolls 5 - 1 = 4
+		const negDmg = rollFormula("1d8+str", () => 0.5, gunslinger);
+		expect(negDmg).not.toBeNull();
+		expect(negDmg?.total).toBe(4);
+		expect(negDmg?.formula).toBe("1d8-1");
+
+		// Multiple dice + placeholder
+		const multi = rollFormula("1d6+1d4+{spell}", () => 0.5, gunslinger);
+		expect(multi).not.toBeNull();
+		expect(multi?.total).toBe(4 + 3 + 2); // 9
+	});
 });
 
 describe("Markdown Storage & Codeblock Sync", () => {
@@ -180,7 +216,10 @@ describe("homebrew field preservation", () => {
 			languages: ["Common", "Sylvan"],
 			skills: { stealth: 1, cooking: 2, bogus: 5 },
 			spells: [{ name: "Custom Bolt", level: 1, damage: "2d6", school: "Chronurgy" }],
-			attacks: [{ name: "Tail Whip", damage: "1d6", reach: "10 ft." }],
+			attacks: [
+				{ name: "Tail Whip", damage: "1d6", reach: "10 ft." },
+				{ name: "Pistol", attackBonus: "dex + pb", damage: "1d10+dex", range: "30/90 ft." },
+			],
 			resources: [{ name: "Grit", max: 3, recharge: "on crit" }],
 			inventory: [{ name: "Wand", charges: 7 }],
 			currency: { gp: 5, platinumScrip: 3 },
@@ -191,6 +230,9 @@ describe("homebrew field preservation", () => {
 		expect(c.skills).toEqual({ stealth: 1, cooking: 2 });
 		expect((c.spells[0] as unknown as Record<string, unknown>).school).toBe("Chronurgy");
 		expect((c.attacks[0] as unknown as Record<string, unknown>).reach).toBe("10 ft.");
+		expect(c.attacks[0]!.range).toBe("");
+		expect(c.attacks[1]!.attackBonus).toBe("dex + pb");
+		expect(c.attacks[1]!.range).toBe("30/90 ft.");
 		expect((c.resources[0] as unknown as Record<string, unknown>).recharge).toBe("on crit");
 		expect((c.inventory[0] as unknown as Record<string, unknown>).charges).toBe(7);
 		expect((c.currency as unknown as Record<string, unknown>).platinumScrip).toBe(3);

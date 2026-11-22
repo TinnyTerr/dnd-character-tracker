@@ -6,6 +6,7 @@ import {
 	applyTempHp,
 	type DiceRollResult,
 	encumbranceStats,
+	evaluateBonus,
 	formatModifier,
 	initiativeModifier,
 	passiveScore,
@@ -50,6 +51,7 @@ export class CharacterSheetRenderer {
 	private rollMode: "normal" | "advantage" | "disadvantage" = "normal";
 	private lastRollBanner: { label: string; result: DiceRollResult } | null = null;
 	private isEditingProfile = false;
+	private editingAttackId: string | null = null;
 
 	constructor(
 		container: HTMLElement,
@@ -662,7 +664,7 @@ export class CharacterSheetRenderer {
 		const formulaInput = rollerRow.createEl("input", {
 			type: "text",
 			cls: "dnd-formula-input",
-			placeholder: "e.g. 2d6+3, 1d8, 4d6",
+			placeholder: "e.g. 2d6+3, 1d20+dex+pb",
 			value: "2d6+3",
 		});
 		const rollBtn = rollerRow.createEl("button", {
@@ -670,9 +672,9 @@ export class CharacterSheetRenderer {
 			text: "Roll",
 		});
 		rollBtn.addEventListener("click", () => {
-			const res = rollFormula(formulaInput.value);
+			const res = rollFormula(formulaInput.value, Math.random, this.character);
 			if (!res) {
-				new Notice("Invalid dice formula! Try format like 2d6+3 or 1d20-1.");
+				new Notice("Invalid dice formula! Try format like 2d6+3 or 1d20+dex+pb.");
 				return;
 			}
 			this.triggerRoll(`Custom Roll (${res.formula})`, res);
@@ -856,8 +858,73 @@ export class CharacterSheetRenderer {
 		const atkSection = parent.createDiv({ cls: "dnd-section" });
 		atkSection.createDiv({ cls: "dnd-section-title", text: "⚔️ Attacks & Weapons" });
 
+		const parseAttackBonusInput = (raw: string): number | string => {
+			const trimmed = raw.trim();
+			if (!trimmed) return 0;
+			return /^[+-]?\d+$/.test(trimmed) ? Number.parseInt(trimmed, 10) : trimmed;
+		};
+
 		const table = atkSection.createDiv({ cls: "dnd-attacks-list" });
 		for (const atk of this.character.attacks) {
+			if (this.editingAttackId === atk.id) {
+				const editRow = table.createDiv({ cls: "dnd-add-row" });
+				const eName = editRow.createEl("input", {
+					type: "text",
+					placeholder: "Weapon / Attack name",
+					value: atk.name,
+				});
+				const eBonus = editRow.createEl("input", {
+					type: "text",
+					placeholder: "Hit (e.g. dex+pb or 5)",
+					value: String(atk.attackBonus ?? 0),
+				});
+				const eDmg = editRow.createEl("input", {
+					type: "text",
+					placeholder: "Damage (e.g. 1d8+dex)",
+					value: atk.damage,
+				});
+				const eType = editRow.createEl("input", {
+					type: "text",
+					placeholder: "Type (e.g. piercing)",
+					value: atk.damageType,
+				});
+				const eRange = editRow.createEl("input", {
+					type: "text",
+					placeholder: "Range (e.g. 5 ft., 80/320 ft.)",
+					value: atk.range ?? "",
+				});
+				const eNotes = editRow.createEl("input", {
+					type: "text",
+					placeholder: "Notes (optional)",
+					value: atk.notes ?? "",
+				});
+				const saveBtn = editRow.createEl("button", {
+					cls: "dnd-action-btn dnd-btn-primary",
+					text: "Save",
+				});
+				saveBtn.addEventListener("click", () => {
+					const name = eName.value.trim();
+					if (!name) return;
+					atk.name = name;
+					atk.attackBonus = parseAttackBonusInput(eBonus.value);
+					atk.damage = eDmg.value.trim() || "1d6";
+					atk.damageType = eType.value.trim() || "slashing";
+					atk.range = eRange.value.trim();
+					atk.notes = eNotes.value.trim();
+					this.editingAttackId = null;
+					void this.commit();
+				});
+				const cancelBtn = editRow.createEl("button", {
+					cls: "dnd-action-btn",
+					text: "Cancel",
+				});
+				cancelBtn.addEventListener("click", () => {
+					this.editingAttackId = null;
+					this.render();
+				});
+				continue;
+			}
+
 			const row = table.createDiv({ cls: "dnd-attack-row" });
 			const info = row.createDiv({ cls: "dnd-attack-info" });
 			info.createSpan({ cls: "dnd-attack-name", text: atk.name });
@@ -866,13 +933,19 @@ export class CharacterSheetRenderer {
 				text: [atk.range, atk.damageType, atk.notes].filter(Boolean).join(" • "),
 			});
 
+			const hitBonus = evaluateBonus(atk.attackBonus, this.character);
 			const btns = row.createDiv({ cls: "dnd-attack-btns" });
 			const toHitBtn = btns.createEl("button", {
 				cls: "dnd-action-btn",
-				text: `🎯 ${formatModifier(atk.attackBonus)} to Hit`,
+				text: `🎯 ${formatModifier(hitBonus)} to Hit`,
+				attr:
+					typeof atk.attackBonus === "string"
+						? { title: `Formula: ${atk.attackBonus}` }
+						: undefined,
 			});
 			toHitBtn.addEventListener("click", () => {
-				const res = rollD20(atk.attackBonus, this.rollMode);
+				const bonus = evaluateBonus(atk.attackBonus, this.character);
+				const res = rollD20(bonus, this.rollMode);
 				this.triggerRoll(`${atk.name} — Attack`, res);
 			});
 
@@ -881,12 +954,22 @@ export class CharacterSheetRenderer {
 				text: `💥 ${atk.damage}`,
 			});
 			dmgBtn.addEventListener("click", () => {
-				const res = rollFormula(atk.damage);
+				const res = rollFormula(atk.damage, Math.random, this.character);
 				if (res) {
 					this.triggerRoll(`${atk.name} — Damage (${atk.damageType})`, res);
 				} else {
 					new Notice(`Could not parse damage formula: ${atk.damage}`);
 				}
+			});
+
+			const editBtn = btns.createEl("button", {
+				cls: "dnd-mini-btn",
+				text: "✏️",
+				attr: { title: "Edit attack" },
+			});
+			editBtn.addEventListener("click", () => {
+				this.editingAttackId = atk.id;
+				this.render();
 			});
 
 			const delBtn = btns.createEl("button", {
@@ -906,19 +989,20 @@ export class CharacterSheetRenderer {
 			placeholder: "Weapon / Attack name",
 		});
 		const atkBonusIn = addAtkRow.createEl("input", {
-			type: "number",
-			placeholder: "Hit +",
-			value: "5",
+			type: "text",
+			placeholder: "Hit (e.g. dex+pb or 5)",
 		});
 		const atkDmgIn = addAtkRow.createEl("input", {
 			type: "text",
-			placeholder: "Damage (e.g. 1d8+3)",
-			value: "1d8+3",
+			placeholder: "Damage (e.g. 1d8+dex)",
 		});
 		const atkTypeIn = addAtkRow.createEl("input", {
 			type: "text",
-			placeholder: "Type (slashing)",
-			value: "slashing",
+			placeholder: "Type (e.g. piercing)",
+		});
+		const atkRangeIn = addAtkRow.createEl("input", {
+			type: "text",
+			placeholder: "Range (e.g. 5 ft., 80/320 ft.)",
 		});
 		const addAtkBtn = addAtkRow.createEl("button", {
 			cls: "dnd-action-btn",
@@ -930,10 +1014,10 @@ export class CharacterSheetRenderer {
 			this.character.attacks.push({
 				id: `atk-${Date.now()}`,
 				name,
-				attackBonus: Number.parseInt(atkBonusIn.value, 10) || 0,
+				attackBonus: parseAttackBonusInput(atkBonusIn.value),
 				damage: atkDmgIn.value.trim() || "1d6",
 				damageType: atkTypeIn.value.trim() || "slashing",
-				range: "5 ft.",
+				range: atkRangeIn.value.trim(),
 			});
 			void this.commit();
 		});
